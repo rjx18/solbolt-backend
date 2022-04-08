@@ -9,13 +9,29 @@ from .symexec import SymExec
 
 api = Namespace('sym', description='Symbolic execution operations')
 
+sym_settings = api.model('Symbolic execution Settings',
+                {
+                    'max_depth': fields.Integer(default=128),
+                    'call_depth_limit': fields.Integer(default=10),
+                    'strategy': fields.String(default='bfs', 
+                                              description="Search strategy for symbolic execution. Can be 'bfs', 'dfs', 'naive-random' or 'weighted-random'"),
+                    'loop_bound': fields.Integer(default=10,
+                            description="Number of loop iterations to execute before stopping."),
+                    'transaction_count': fields.Integer(default=2,
+                            description="Number of transaction states to symbolically execute."),
+                })
+
 solidity_model = api.model('Symbolic Execute', 
-		  {'content': fields.String(required = True, 
+		  { 'content': fields.String(required = True, 
 					 description="Solidity code", 
 					 help="Solidity cannot be blank."),
-     'json': fields.String(required = True,
-                           description="Compiled JSON", 
-					                  help="JSON cannot be blank.")})
+            'json': fields.String(required = True,
+                            description="Compiled JSON", 
+					                  help="JSON cannot be blank."),
+            'settings': fields.Nested(sym_settings, required = True,
+                            description="Settings for symbolic execution", 
+					                  help="Settings cannot be blank.")
+            })
 
 @api.route('/')
 class Symbolic(Resource):
@@ -26,21 +42,47 @@ class Symbolic(Resource):
         try:
             solidity_contents = request.json['content']
             compiled_json = json.loads(request.json['json'])
+            settings = request.json['settings']
+            
             exec_env = SymExec(solidity_files=['output.sol'],
                 solidity_file_contents=[solidity_contents],
-                json=[compiled_json])
+                json=[compiled_json],
+                max_depth=settings['max_depth'],
+                call_depth_limit=settings['call_depth_limit'],
+                strategy=settings['strategy'],
+                loop_bound=settings['loop_bound'],
+                transaction_count=settings['transaction_count'])
             
             exec_env.execute_command()
             
-            (creation_transaction_gas_map, runtime_transaction_gas_map, function_gas_map) = exec_env.parse_exec_results()
+            (creation_transaction_gas_map, runtime_transaction_gas_map, function_gas_map, loop_gas_meter) = exec_env.parse_exec_results()
             
             creation_result = { k: v.__dict__() for k, v in creation_transaction_gas_map.items() }
             
             runtime_result = { k: v.__dict__() for k, v in runtime_transaction_gas_map.items() }
             
+            loop_gas_result = dict()
+            
+            for key in loop_gas_meter.keys():
+                loop_gas_result[key] = dict()
+                
+                key_gas_items = loop_gas_meter[key]
+                
+                for pc in key_gas_items.keys():
+                    loop_gas_result[key][pc] = dict()
+                    loop_gas_item = key_gas_items[pc]
+                    
+                    if len(loop_gas_item.iteration_gas_cost) > 0:
+                        average_iteration_cost = sum(loop_gas_item.iteration_gas_cost) / len(loop_gas_item.iteration_gas_cost)
+                    else:
+                        average_iteration_cost = 0
+                    
+                    loop_gas_result[key][pc] = average_iteration_cost
+            
             return {
                 "creation": creation_result,
-                "runtime": runtime_result
+                "runtime": runtime_result,
+                "loop_gas": loop_gas_result
             }
             
             # TODO: hard coded only one contract here, allow multiple contracts in future

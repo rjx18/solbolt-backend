@@ -347,7 +347,7 @@ class SymExec:
         self.sym = sym
 
     def parse_exec_results(self):
-        contract = self.analyzer.contracts[0]
+        # contract = self.analyzer.contracts[0]
 
         # parse creation transaction
         # creation_transaction_gas_map = dict()
@@ -361,51 +361,31 @@ class SymExec:
         creation_transaction_gas_map = dict()
         creation_gas_meter = self.sym.plugin_loader.laser_plugin_instances["gas-meter"].creation_gas_meter
         
-        self.accumulate_gas_new(contract, creation_transaction_gas_map, creation_gas_meter, is_creation=True)
+        self.accumulate_gas(creation_transaction_gas_map, creation_gas_meter, is_creation=True)
         
         # parse runtime transactions
         runtime_transaction_gas_map = dict()
         runtime_gas_meter = self.sym.plugin_loader.laser_plugin_instances["gas-meter"].runtime_gas_meter
         
-        self.accumulate_gas_new(contract, runtime_transaction_gas_map, runtime_gas_meter, is_creation=False)
+        self.accumulate_gas(runtime_transaction_gas_map, runtime_gas_meter, is_creation=False)
         
-        return (creation_transaction_gas_map, runtime_transaction_gas_map, self.sym.plugin_loader.laser_plugin_instances["function-tracker"].function_gas_meter)
+        return (
+            creation_transaction_gas_map, 
+            runtime_transaction_gas_map, 
+            self.sym.plugin_loader.laser_plugin_instances["function-tracker"].function_gas_meter,
+            self.sym.plugin_loader.laser_plugin_instances["loop-gas-meter"].global_loop_gas_meter
+        )
         
         # calculate stats by key
         # for i in self.sym.runtime_transaction_states:
         #     pass
 
-    def accumulate_gas(self, contract, transaction_gas_map, transaction_states, is_creation=False):
-        for tx_id in range(len(transaction_states)):
-            global_state = transaction_states[tx_id]
-            instruction_addresses = list(global_state.mstate.pc_gas_meter.keys())
-            
-            for addr in instruction_addresses:
-                gas_meter = global_state.mstate.pc_gas_meter[addr]
-                
-                source_info = contract.get_source_mapping(addr, constructor=is_creation)
-                if (source_info.solidity_file_idx == 0):
-                    key = f'{source_info.offset}:{source_info.offset + source_info.length}'
-                else:
-                    key = '_generated_'
-                
-                if (key not in transaction_gas_map):
-                    transaction_gas_map[key] = InstructionGasCount()
-                
-                gas_map = transaction_gas_map[key]
-                gas_map.accumulate_gas(tx_id, gas_meter.max_opcode_gas_used, gas_meter.min_opcode_gas_used, gas_meter.mem_gas_used)
 
-    def accumulate_gas_new(self, contract, transaction_gas_map, gas_meter, is_creation=False):
-        instruction_addresses = list(gas_meter.keys())
+    def accumulate_gas(self, transaction_gas_map, gas_meter, is_creation=False):
+        instruction_keys = list(gas_meter.keys())
         
-        for addr in instruction_addresses:
-            gas_meter_item = gas_meter[addr]
-            
-            source_info = contract.get_source_mapping(addr, constructor=is_creation)
-            if (source_info.solidity_file_idx == 0):
-                key = f'{source_info.offset}:{source_info.offset + source_info.length}'
-            else:
-                key = '_generated_'
+        for key in instruction_keys:
+            gas_meter_item = gas_meter[key]
             
             if (key not in transaction_gas_map):
                 transaction_gas_map[key] = GasMeterItem()
@@ -626,10 +606,25 @@ if __name__ == "__main__":
     # exec_env = SymExec(solidity_files=["test.sol"])
     exec_env.execute_command()
     
-    (creation_transaction_gas_map, runtime_transaction_gas_map, function_gas_meter) = exec_env.parse_exec_results()
+    (creation_transaction_gas_map, runtime_transaction_gas_map, function_gas_meter, loop_gas_meter) = exec_env.parse_exec_results()
     
     print(json.dumps({ k: v.to_json() for k, v in runtime_transaction_gas_map.items() }))
     
     # print(json.dumps({ k: v.to_json() for k, v in new_transaction_gas_map.items() }))
     
     print(function_gas_meter)
+    
+    print('Number of loops found: ' + str(len(loop_gas_meter.keys())))
+    for key in loop_gas_meter.keys():
+        print(f'LOOP GAS METER FOR {key}')
+        
+        key_gas_items = loop_gas_meter[key]
+        
+        for pc in key_gas_items.keys():
+            loop_gas_item = key_gas_items[pc]
+            if len(loop_gas_item.iteration_gas_cost) > 0:
+                print(f'\tPC {pc}')
+                print(f'\t\tis_hidden: {"Yes" if loop_gas_item.is_hidden else "No"}')
+                print(f'\t\tAverage iteration cost: {sum(loop_gas_item.iteration_gas_cost) / len(loop_gas_item.iteration_gas_cost)}')
+                print(f'\t\tNum iterations seen: {len(loop_gas_item.iteration_gas_cost)}')
+            

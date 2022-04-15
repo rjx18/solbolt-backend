@@ -20,7 +20,6 @@ from mythril.laser.plugin.plugins.plugin_annotations import (
     GasMeterItem
 )
 
-
 default_colors = [
     {
         "border": "#26996f",
@@ -108,60 +107,6 @@ default_opts = {
 
 log = logging.getLogger(__name__)
 
-class InstructionGasCount:
-    def __init__(self):
-        # self.total_max_opcode_gas_accumulated = 0
-        # self.total_min_opcode_gas_accumulated = 0
-        # self.total_mem_gas_accumulated = 0
-        # self.num_transactions_seen = 0
-        # self.max_opcode_gas = 0
-        # self.min_opcode_gas = 0
-        # self.max_mem_gas = 0
-        # self.min_mem_gas = 0
-        self.tx = set() # list of tx ids that touched this gas count
-        self.max_opcode_gas = [] # dict of tx id to list of opcode gases
-        self.min_opcode_gas = [] # dict of tx id to list of opcode gases
-        self.mem_gas = [] # dict of tx id to list of opcode gases
-        
-    def accumulate_gas(self, tx_id, max_opcode_gas, min_opcode_gas, mem_gas):
-        self.tx.add(tx_id)
-        self.max_opcode_gas.append(max_opcode_gas)
-        self.min_opcode_gas.append(min_opcode_gas)
-        self.mem_gas.append(mem_gas)
-
-    def __str__(self) -> str:
-        total_max_opcode_gas = sum(self.max_opcode_gas)
-        num_tx = len(self.max_opcode_gas)
-        mean_opcode_gas = total_max_opcode_gas / num_tx
-        return str(mean_opcode_gas)
-
-    def __dict__(self):
-        num_tx = len(self.tx)
-        
-        total_max_opcode_gas = sum(self.max_opcode_gas)
-        mean_max_opcode_gas = total_max_opcode_gas / num_tx
-        
-        total_min_opcode_gas = sum(self.min_opcode_gas)
-        mean_min_opcode_gas = total_min_opcode_gas / num_tx
-        
-        total_mem_gas = sum(self.mem_gas)
-        mean_mem_gas = total_mem_gas / num_tx 
-        
-        mean_wc_gas = mean_max_opcode_gas + mean_mem_gas      
-        
-        return dict(
-            numTx=num_tx,
-            totalMaxOpcodeGas=total_max_opcode_gas,
-            meanMaxOpcodeGas=mean_max_opcode_gas,
-            totalMinOpcodeGas=total_min_opcode_gas,
-            meanMinOpcodeGas=mean_min_opcode_gas,
-            totalMemGas=total_mem_gas,
-            meanMemGas=mean_mem_gas,
-            meanWcGas=mean_wc_gas
-        )
-
-    def to_json(self):
-        return json.dumps(self, default=lambda o: o.__dict__())
 
 def merge_gas_items(global_gas_item, add_gas_item):
     global_gas_item.min_opcode_gas_used += add_gas_item.min_opcode_gas_used
@@ -178,6 +123,7 @@ class SymExec:
                 command = "analyze",
                 solidity_files=None,
                 solidity_file_contents=None,
+                onchain_address=None,
                 code=None,
                 json=None,
                 max_depth=128,
@@ -189,11 +135,15 @@ class SymExec:
                 solver_timeout=10000,
                 create_timeout=10,
                 unconstrained_storage=False,
-                bin_runtime=True
+                bin_runtime=True,
+                infura_id=None,
+                no_onchain_data=True,
+                query_signature=None
                 ) -> None:
         self.command = command
         self.solidity_files = solidity_files
         self.solidity_file_contents = solidity_file_contents
+        self.onchain_address = onchain_address
         self.code = code
         self.json = json
         self.max_depth = max_depth
@@ -207,8 +157,11 @@ class SymExec:
         self.unconstrained_storage = unconstrained_storage
         self.bin_runtime = bin_runtime
         
+        self.infura_id = infura_id
+        self.no_onchain_data = no_onchain_data
+        
         config = self.set_config()
-        query_signature = None
+        query_signature = query_signature
         solc_json = None
         solv = None
         self.disassembler = MythrilDisassembler(
@@ -226,6 +179,10 @@ class SymExec:
 
     def set_config(self):
         config = MythrilConfig()
+        if self.infura_id:
+            config.set_api_infura_id(self.infura_id)
+        if not self.no_onchain_data:
+            config.set_api_from_config_path()
 
         return config
 
@@ -235,7 +192,6 @@ class SymExec:
             # Load from bytecode
             code = self.code[2:] if self.code.startswith("0x") else self.code
             address, _ = disassembler.load_from_bytecode(code, self.bin_runtime)
-            pass
         elif self.solidity_files is not None and self.json is not None and self.solidity_file_contents is not None:
             # Compile Solidity source file(s)
             if len(self.json) > 1:
@@ -246,7 +202,8 @@ class SymExec:
             address, _ = disassembler.load_from_solidity_json(
                 self.json,
                 self.solidity_files,
-                self.solidity_file_contents
+                self.solidity_file_contents,
+                self.onchain_address
             )  # list of files
         elif self.solidity_files is not None:
             # Compile Solidity source file(s)
@@ -340,23 +297,11 @@ class SymExec:
                 # custom_modules_directory=self.custom_modules_directory,
             )
 
-        # print("sym.py: Num creation states: " + str(len(sym.laser.creation_transaction_states)))
-        # print("sym.py: Num runtime states: " + str(len(sym.laser.runtime_transaction_states)))
         print("sym.py: Sym exec took : " + str(time.process_time() - start)  + "s")
 
         self.sym = sym
 
     def parse_exec_results(self):
-        # contract = self.analyzer.contracts[0]
-
-        # parse creation transaction
-        # creation_transaction_gas_map = dict()
-        # self.accumulate_gas(contract, creation_transaction_gas_map, self.sym.laser.creation_transaction_states, is_creation=True)
-        
-        # # parse runtime transactions
-        # runtime_transaction_gas_map = dict()
-        # self.accumulate_gas(contract, runtime_transaction_gas_map, self.sym.laser.runtime_transaction_states, is_creation=False)
-        
         # parse creation transactions
         creation_transaction_gas_map = dict()
         creation_gas_meter = self.sym.plugin_loader.laser_plugin_instances["gas-meter"].creation_gas_meter
@@ -376,9 +321,6 @@ class SymExec:
             self.sym.plugin_loader.laser_plugin_instances["loop-gas-meter"].global_loop_gas_meter
         )
         
-        # calculate stats by key
-        # for i in self.sym.runtime_transaction_states:
-        #     pass
 
 
     def accumulate_gas(self, transaction_gas_map, gas_meter, is_creation=False):
@@ -394,73 +336,6 @@ class SymExec:
             
             merge_gas_items(global_gas_item, gas_meter_item)
 
-
-    # if args.attacker_address:
-    #     try:
-    #         ACTORS["ATTACKER"] = args.attacker_address
-    #     except ValueError:
-    #         exit_with_error("text", "Attacker address is invalid")
-
-    # if args.creator_address:
-    #     try:
-    #         ACTORS["CREATOR"] = args.creator_address
-    #     except ValueError:
-    #         exit_with_error("text", "Creator address is invalid")
-
-    # if args.graph:
-    #     print("MY_DEBUG args graph is true")
-        
-    #     html = analyzer.graph_html(
-    #         contract=analyzer.contracts[0],
-    #         enable_physics=args.enable_physics,
-    #         phrackify=args.phrack,
-    #         transaction_count=args.transaction_count,
-    #     )
-
-    #     try:
-    #         with open(args.graph, "w") as f:
-    #             f.write(html)
-    #     except Exception as e:
-    #         exit_with_error(args.outform, "Error saving graph: " + str(e))
-
-    # elif args.statespace_json:
-    #     print("MY_DEBUG args statespace is true")
-    #     if not analyzer.contracts:
-    #         exit_with_error(
-    #             args.outform, "input files do not contain any valid contracts"
-    #         )
-
-    #     statespace = analyzer.dump_statespace(contract=analyzer.contracts[0])
-
-    #     try:
-    #         with open(args.statespace_json, "w") as f:
-    #             json.dump(statespace, f)
-    #     except Exception as e:
-    #         exit_with_error(args.outform, "Error saving json: " + str(e))
-
-    # else:
-    #     try:
-    #         print("MY_DEBUG Commencing firing lasers!")
-    #         print("MY_DEBUG args modules " + args.modules)
-    #         report = analyzer.fire_lasers(
-    #             modules=[m.strip() for m in args.modules.strip().split(",")]
-    #             if args.modules
-    #             else None,
-    #             transaction_count=args.transaction_count,
-    #         )
-    #         outputs = {
-    #             "json": report.as_json(),
-    #             "jsonv2": report.as_swc_standard_format(),
-    #             "text": report.as_text(),
-    #             "markdown": report.as_markdown(),
-    #         }
-    #         print(outputs[args.outform])
-    #     except DetectorNotFoundError as e:
-    #         exit_with_error(args.outform, format(e))
-    #     except CriticalError as e:
-    #         exit_with_error(
-    #             args.outform, "Analysis error encountered: " + format(e)
-    #         )
 
     def generate_graph(
         self,
@@ -602,8 +477,16 @@ if __name__ == "__main__":
     sol_file = open('test.sol', "r")
     sol_contents = sol_file.read()
     
-    exec_env = SymExec(solidity_files=["output.sol"], json=[data], solidity_file_contents=[sol_contents], transaction_count=3, execution_timeout=60, solver_timeout=20000, loop_bound=10)
+    # exec_env = SymExec(solidity_files=["output.sol"], json=[data], solidity_file_contents=[sol_contents], transaction_count=3, execution_timeout=60, solver_timeout=20000, loop_bound=10)
     # exec_env = SymExec(solidity_files=["test.sol"])
+    exec_env = SymExec(onchain_address="0x2C4e8f2D746113d0696cE89B35F0d8bF88E0AEcA", 
+                       transaction_count=3, 
+                       execution_timeout=60, 
+                       solver_timeout=20000, 
+                       loop_bound=10,
+                       infura_id="2b46429217e54609bc4b918ea219e894",
+                       no_onchain_data=False,
+                       query_signature=True)
     exec_env.execute_command()
     
     (creation_transaction_gas_map, runtime_transaction_gas_map, function_gas_meter, loop_gas_meter) = exec_env.parse_exec_results()

@@ -82,6 +82,7 @@ class Symbolic(Resource):
             return {
                 "creation": creation_result,
                 "runtime": runtime_result,
+                "function_gas": function_gas_map,
                 "loop_gas": loop_gas_result
             }
             

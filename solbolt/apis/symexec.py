@@ -122,8 +122,8 @@ class SymExec:
     def __init__(self, 
                 command = "analyze",
                 solidity_files=None,
-                solidity_file_contents=None,
                 onchain_address=None,
+                contract_name=None,
                 code=None,
                 json=None,
                 max_depth=128,
@@ -136,14 +136,13 @@ class SymExec:
                 create_timeout=10,
                 unconstrained_storage=False,
                 bin_runtime=True,
-                infura_id=None,
                 no_onchain_data=True,
                 query_signature=None
                 ) -> None:
         self.command = command
         self.solidity_files = solidity_files
-        self.solidity_file_contents = solidity_file_contents
         self.onchain_address = onchain_address
+        self.contract_name = contract_name
         self.code = code
         self.json = json
         self.max_depth = max_depth
@@ -157,11 +156,11 @@ class SymExec:
         self.unconstrained_storage = unconstrained_storage
         self.bin_runtime = bin_runtime
         
-        self.infura_id = infura_id
+        self.infura_id = os.environ.get('SOLBOLT_INFURA_ID', '')
         self.no_onchain_data = no_onchain_data
         
         config = self.set_config()
-        query_signature = query_signature
+        self.query_signature = query_signature
         solc_json = None
         solv = None
         self.disassembler = MythrilDisassembler(
@@ -192,7 +191,7 @@ class SymExec:
             # Load from bytecode
             code = self.code[2:] if self.code.startswith("0x") else self.code
             address, _ = disassembler.load_from_bytecode(code, self.bin_runtime)
-        elif self.solidity_files is not None and self.json is not None and self.solidity_file_contents is not None:
+        elif self.solidity_files is not None and self.json is not None:
             # Compile Solidity source file(s)
             if len(self.json) > 1:
                 self.exit_with_error(
@@ -202,19 +201,19 @@ class SymExec:
             address, _ = disassembler.load_from_solidity_json(
                 self.json,
                 self.solidity_files,
-                self.solidity_file_contents,
-                self.onchain_address
+                self.onchain_address,
+                self.contract_name
             )  # list of files
-        elif self.solidity_files is not None:
-            # Compile Solidity source file(s)
-            if len(self.solidity_files) > 1:
-                self.exit_with_error(
-                    "text",
-                    "Cannot generate call graphs from multiple input files. Please do it one at a time.",
-                )
-            address, _ = disassembler.load_from_solidity(
-                self.solidity_files
-            )  # list of files
+        # elif self.solidity_files is not None:
+        #     # Compile Solidity source file(s)
+        #     if len(self.solidity_files) > 1:
+        #         self.exit_with_error(
+        #             "text",
+        #             "Cannot generate call graphs from multiple input files. Please do it one at a time.",
+        #         )
+        #     address, _ = disassembler.load_from_solidity(
+        #         self.solidity_files
+        #     )  # list of files
         else:
             self.exit_with_error(
                 "text",
@@ -264,7 +263,7 @@ class SymExec:
             create_timeout=self.create_timeout,
             # enable_iprof=self.enable_iprof,
             # disable_dependency_pruning=self.disable_dependency_pruning,
-            # use_onchain_data=not self.no_onchain_data,
+            use_onchain_data=not self.no_onchain_data,
             solver_timeout=self.solver_timeout,
             # parallel_solving=True,
             # custom_modules_directory=self.custom_modules_directory
@@ -282,12 +281,24 @@ class SymExec:
             self.exit_with_error(
                 "text", "input files do not contain any valid contracts"
             )
+            
+        sym_contract = None 
+        
+        for analyzer_contract in self.analyzer.contracts:
+            if (analyzer_contract.name == self.contract_name):
+                sym_contract = analyzer_contract
+                break
+               
+        if sym_contract is None:
+            self.exit_with_error(
+                "text", "contract name is not found within compiled contracts"
+            )
 
         sym = SymExecWrapper(
-                self.analyzer.contracts[0], # here is where we set which contract it is
+                sym_contract, # here is where we set which contract it is
                 self.address,
                 self.strategy,
-                # dynloader=DynLoader(self.eth, active=self.use_onchain_data),
+                dynloader=DynLoader(self.analyzer.eth, active=not self.no_onchain_data),
                 max_depth=self.max_depth,
                 execution_timeout=self.execution_timeout,
                 transaction_count=self.transaction_count,
@@ -484,7 +495,6 @@ if __name__ == "__main__":
                        execution_timeout=60, 
                        solver_timeout=20000, 
                        loop_bound=10,
-                       infura_id="2b46429217e54609bc4b918ea219e894",
                        no_onchain_data=False,
                        query_signature=True)
     exec_env.execute_command()

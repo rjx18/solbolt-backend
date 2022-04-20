@@ -19,15 +19,23 @@ sym_settings = api.model('Symbolic execution Settings',
                             description="Number of loop iterations to execute before stopping."),
                     'transaction_count': fields.Integer(default=2,
                             description="Number of transaction states to symbolically execute."),
+                    'enable_onchain': fields.Boolean(default=False,
+                            description="Enables on chain concrete execution"),
+                    'onchain_address': fields.String(description="Address used for on chain concrete execution"),
+                })
+
+sym_file = api.model('Symbolic execution file',
+                {
+                    'name': fields.String(description="Filename", required=True),
+                    'content': fields.String(description="Solidity content", required=True),
                 })
 
 solidity_model = api.model('Symbolic Execute', 
-		  { 'content': fields.String(required = True, 
-					 description="Solidity code", 
-					 help="Solidity cannot be blank."),
+		  { 'files': fields.List(fields.Nested(sym_file), description='Solidity files', required=True),
             'json': fields.String(required = True,
                             description="Compiled JSON", 
 					                  help="JSON cannot be blank."),
+            'contract': fields.String(required = True, description="Name of contract to symbolically execute"),
             'settings': fields.Nested(sym_settings, required = True,
                             description="Settings for symbolic execution", 
 					                  help="Settings cannot be blank.")
@@ -40,18 +48,25 @@ class Symbolic(Resource):
     def post(self):
         '''Symbolically execute Solidity'''
         try:
-            solidity_contents = request.json['content']
+            solidity_files = request.json['files']
+            contract = request.json['contract']
             compiled_json = json.loads(request.json['json'])
             settings = request.json['settings']
             
-            exec_env = SymExec(solidity_files=['output.sol'],
-                solidity_file_contents=[solidity_contents],
+            onchain_address = settings.get('onchain_address', None) if settings['enable_onchain'] else None
+            no_onchain_data = not settings['enable_onchain']
+            
+            exec_env = SymExec(solidity_files=solidity_files,
+                onchain_address=onchain_address,
+                contract_name=contract,
                 json=[compiled_json],
                 max_depth=settings['max_depth'],
                 call_depth_limit=settings['call_depth_limit'],
                 strategy=settings['strategy'],
                 loop_bound=settings['loop_bound'],
-                transaction_count=settings['transaction_count'])
+                transaction_count=settings['transaction_count'],
+                no_onchain_data=no_onchain_data
+            )
             
             exec_env.execute_command()
             
@@ -102,6 +117,7 @@ class Symbolic(Resource):
         except RuntimeError as e:
             api.abort(500, e.__doc__, status = "Runtime error, could not symbolic execute", statusCode = "500")
         except Exception as e:
+            print(e)
             api.abort(400, e.__doc__, status = "Request error, could not symbolic execute", statusCode = "400")
 
     def parseSourceMap():

@@ -31,6 +31,7 @@ WORKDIR /app
 
 RUN useradd -ms /bin/bash appuser
 RUN chown -R appuser:appuser /app
+RUN chmod -R 755 /app/solc
 
 USER appuser
 

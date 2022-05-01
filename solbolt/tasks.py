@@ -165,7 +165,7 @@ def compile_solidity(sol_files, settings):
       print(traceback.format_exc())
       return {
         "success": False,
-        "result": "Request error, could not compile content"
+        "result": "Request error, could not compile content: " + traceback.format_exc()
       }
   
 def get_solc_json(sources, json_settings, solc_binary="solc"):

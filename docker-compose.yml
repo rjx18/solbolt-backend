@@ -27,8 +27,8 @@ services:
     command: ["gunicorn", "--bind", "[::]:5000", "--workers", "8", "wsgi:app"]
     # command: ["python3.9", "--version"]
     restart: always
-    volumes:
-      - ./solbolt/:/app/solbolt/
+    # volumes:
+      # - ./solbolt/:/app/solbolt/
       # - static_volume:/app/solbolt/staticfiles
       # - media_volume:/app/solbolt/mediafiles
     # depends_on:
@@ -41,8 +41,8 @@ services:
     # command: ["python3", "manage.py", "runserver", "[::]:5000"]
     restart: always
     user: appuser
-    volumes:
-      - ./solbolt/:/app/solbolt/
+    # volumes:
+      # - ./solbolt/:/app/solbolt/
       # - static_volume:/solbolt/tkets/staticfiles
       # - media_volume:/solbolt/tkets/mediafiles
     depends_on:

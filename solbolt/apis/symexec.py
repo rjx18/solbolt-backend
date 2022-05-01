@@ -107,7 +107,7 @@ default_opts = {
 
 log = logging.getLogger(__name__)
 
-EXECUTION_TIMEOUT = os.environ.get("SOLBOLT_SYMEXEC_TIMEOUT", 120)
+EXECUTION_TIMEOUT = int(os.environ.get("SOLBOLT_SYMEXEC_TIMEOUT", "120"))
 
 
 def merge_gas_items(global_gas_item, add_gas_item):

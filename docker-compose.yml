@@ -51,7 +51,8 @@ services:
       - backend.env
   redis:
     image: redis:6.2.6-alpine
-    command: ["redis-server", "--requirepass", "${DOCKER_REDIS_PASSWORD}"]
+    command: >
+      --requirepass ${DOCKER_REDIS_PASSWORD}
     restart: always
     ports:
       - "6379:6379"

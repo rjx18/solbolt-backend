@@ -236,5 +236,5 @@ cython_debug/
 *.env
 data/
 init-letsencrypto.sh
-
+log/
 # End of https://www.toptal.com/developers/gitignore/api/flask,python

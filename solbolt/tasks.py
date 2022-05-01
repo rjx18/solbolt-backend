@@ -279,5 +279,5 @@ def symbolic_exec(solidity_files, contract, compiled_json, settings):
   except Exception as e:
     return {
         "success": False,
-        "result": str(e)
+        "result": traceback.format_exc()
       }

@@ -162,6 +162,7 @@ def compile_solidity(sol_files, settings):
         "result": "Internal server error, could not compile content"
       }
   except Exception as e:
+      print(traceback.format_exc())
       return {
         "success": False,
         "result": "Request error, could not compile content"

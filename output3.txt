@@ -1,5 +1,0 @@
-MY_DEBUG starting new transaction, num states: 1 , num strats: 0
-MY_DEBUG executing new state, num instructions 1127
-MY_DEBUG executing new opcode: SELFDESTRUCT
-sym.py: Got back final states: 0
-sym.py: Sym exec took : 0.0s

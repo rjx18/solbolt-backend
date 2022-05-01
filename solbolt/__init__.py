@@ -35,7 +35,7 @@ def create_app(test_config=None):
     api.init_app(app)
     
     CORS(app, resources={r'/*': {'origins': '*'}})
-
+    
     # app = Api(app = flask_app)
     # name_space = app.namespace('main', description='Main APIs')
 

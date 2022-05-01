@@ -107,6 +107,8 @@ default_opts = {
 
 log = logging.getLogger(__name__)
 
+EXECUTION_TIMEOUT = os.environ.get("SOLBOLT_SYMEXEC_TIMEOUT", 120)
+
 
 def merge_gas_items(global_gas_item, add_gas_item):
     global_gas_item.min_opcode_gas_used += add_gas_item.min_opcode_gas_used
@@ -131,7 +133,7 @@ class SymExec:
                 strategy='bfs',
                 loop_bound=10,
                 transaction_count=2,
-                execution_timeout=120,
+                execution_timeout=EXECUTION_TIMEOUT,
                 solver_timeout=10000,
                 create_timeout=10,
                 unconstrained_storage=False,
@@ -231,7 +233,6 @@ class SymExec:
             log.error(message)
         elif format_ == "json":
             result = {"success": False, "error": str(message), "issues": []}
-            print(json.dumps(result))
         else:
             result = [
                 {
@@ -317,13 +318,13 @@ class SymExec:
         creation_transaction_gas_map = dict()
         creation_gas_meter = self.sym.plugin_loader.laser_plugin_instances["gas-meter"].creation_gas_meter
         
-        self.accumulate_gas(creation_transaction_gas_map, creation_gas_meter, is_creation=True)
+        self.accumulate_gas(creation_transaction_gas_map, creation_gas_meter)
         
         # parse runtime transactions
         runtime_transaction_gas_map = dict()
         runtime_gas_meter = self.sym.plugin_loader.laser_plugin_instances["gas-meter"].runtime_gas_meter
         
-        self.accumulate_gas(runtime_transaction_gas_map, runtime_gas_meter, is_creation=False)
+        self.accumulate_gas(runtime_transaction_gas_map, runtime_gas_meter)
         
         return (
             creation_transaction_gas_map, 
@@ -331,10 +332,9 @@ class SymExec:
             self.sym.plugin_loader.laser_plugin_instances["function-tracker"].function_gas_meter,
             self.sym.plugin_loader.laser_plugin_instances["loop-gas-meter"].global_loop_gas_meter
         )
-        
 
 
-    def accumulate_gas(self, transaction_gas_map, gas_meter, is_creation=False):
+    def accumulate_gas(self, transaction_gas_map, gas_meter):
         instruction_keys = list(gas_meter.keys())
         
         for key in instruction_keys:
@@ -348,176 +348,45 @@ class SymExec:
             merge_gas_items(global_gas_item, gas_meter_item)
 
 
-    def generate_graph(
-        self,
-        statespace,
-        title="Mythril / Ethereum LASER Symbolic VM",
-        physics=False,
-        phrackify=False,
-    ):
-        """
 
-        :param statespace:
-        :param title:
-        :param physics:
-        :param phrackify:
-        :return:
-        """
-        env = Environment(
-            loader=PackageLoader("mythril.analysis"),
-            autoescape=select_autoescape(["html", "xml"]),
-        )
-        template = env.get_template("callgraph.html")
-
-        graph_opts = default_opts
-
-        graph_opts["physics"]["enabled"] = physics
-
-        return template.render(
-            title=title,
-            nodes=self.extract_nodes(statespace),
-            edges=self.extract_edges(statespace),
-            phrackify=phrackify,
-            opts=graph_opts,
-        )
+# if __name__ == "__main__":
+#     bytecode = "ffffffff16146107f0576040517f08c379a00000000000000000000000000000000000000000000000000000000081526004016107e790610f4a565b60405180910390fd5b600160008273ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff16815260200190815260200160002060010160009054906101000a900460ff1615610880576040517f08c379a000000000000000000000000000000000000000000000000000000000815260040161087790610fb6565b60405180910390fd5b6000600160008373ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff16815260200190815260200160002060000154146108cf57600080fd5b60018060008373ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff1681526020019081526020016000206000018190555050565b60016020528060005260406000206000915090508060000154908060010160009054906101000a900460ff16908060010160019054906101000a900473ffffffffffffffffffffffffffffffffffffffff16908060020154905084565b600060026109826106da565b8154811061099357610992610c97565b5b906000526020600020906002020160000154905090565b600080fd5b6000819050919050565b6109c2816109af565b81146109cd57600080fd5b50565b6000813590506109df816109b9565b92915050565b6000602082840312156109fb576109fa6109aa565b5b6000610a09848285016109d0565b91505092915050565b6000819050919050565b610a2581610a12565b82525050565b610a34816109af565b82525050565b6000604082019050610a4f6000830185610a1c565b610a5c6020830184610a2b565b9392505050565b600073ffffffffffffffffffffffffffffffffffffffff82169050919050565b6000610a8e82610a63565b9050919050565b610a9e81610a83565b82525050565b6000602082019050610ab96000830184610a95565b92915050565b610ac881610a83565b8114610ad357600080fd5b50565b600081359050610ae581610abf565b92915050565b600060208284031215610b0157610b006109aa565b5b6000610b0f84828501610ad6565b91505092915050565b6000602082019050610b2d6000830184610a2b565b92915050565b60008115159050919050565b610b4881610b33565b82525050565b6000608082019050610b636000830187610a2b565b610b706020830186610b3f565b610b7d6040830185610a95565b610b8a6060830184610a2b565b95945050505050565b6000602082019050610ba86000830184610a1c565b92915050565b600082825260208201905092915050565b7f486173206e6f20726967687420746f20766f7465000000000000000000000000600082015250565b6000610bf5601483610bae565b9150610c0082610bbf565b602082019050919050565b60006020820190508181036000830152610c2481610be8565b9050919050565b7f416c726561647920766f7465642e000000000000000000000000000000000000600082015250565b6000610c61600e83610bae565b9150610c6c82610c2b565b602082019050919050565b60006020820190508181036000830152610c9081610c54565b9050919050565b7f4e487b7100000000000000000000000000000000000000000000000000000000600052603260045260246000fd5b7f4e487b7100000000000000000000000000000000000000000000000000000000600052601160045260246000fd5b6000610d00826109af565b9150610d0b836109af565b9250827fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff03821115610d4057610d3f610cc6565b5b828201905092915050565b7f596f7520616c726561647920766f7465642e0000000000000000000000000000600082015250565b6000610d81601283610bae565b9150610d8c82610d4b565b602082019050919050565b60006020820190508181036000830152610db081610d74565b9050919050565b7f53656c662d64656c65676174696f6e20697320646973616c6c6f7765642e0000600082015250565b6000610ded601e83610bae565b9150610df882610db7565b602082019050919050565b60006020820190508181036000830152610e1c81610de0565b9050919050565b7f466f756e64206c6f6f7020696e2064656c65676174696f6e2e00000000000000600082015250565b6000610e59601983610bae565b9150610e6482610e23565b602082019050919050565b60006020820190508181036000830152610e8881610e4c565b9050919050565b6000610e9a826109af565b91507fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff821415610ecd57610ecc610cc6565b5b600182019050919050565b7f4f6e6c79206368616972706572736f6e2063616e20676976652072696768742060008201527f746f20766f74652e000000000000000000000000000000000000000000000000602082015250565b6000610f34602883610bae565b9150610f3f82610ed8565b604082019050919050565b60006020820190508181036000830152610f6381610f27565b9050919050565b7f54686520766f74657220616c726561647920766f7465642e0000000000000000600082015250565b6000610fa0601883610bae565b9150610fab82610f6a565b602082019050919050565b60006020820190508181036000830152610fcf81610f93565b905091905056fea26469706673582212209f6645214cc4dd0468f8baaa83397392bcb903ad226dff635184c53192e6543064736f6c637829302e382e31312d646576656c6f702e323032312e31322e31382b636f6d6d69742e3130323839666263005a"
+#     f = open('test.json')
+#     data = json.load(f)
+    
+#     sol_file = open('test.sol', "r")
+#     sol_contents = sol_file.read()
+    
+#     # exec_env = SymExec(solidity_files=["output.sol"], json=[data], solidity_file_contents=[sol_contents], transaction_count=3, execution_timeout=60, solver_timeout=20000, loop_bound=10)
+#     # exec_env = SymExec(solidity_files=["test.sol"])
+#     exec_env = SymExec(onchain_address="0x2C4e8f2D746113d0696cE89B35F0d8bF88E0AEcA", 
+#                        transaction_count=3, 
+#                        execution_timeout=60, 
+#                        solver_timeout=20000, 
+#                        loop_bound=10,
+#                        no_onchain_data=False,
+#                        query_signature=True)
+#     exec_env.execute_command()
+    
+#     (creation_transaction_gas_map, runtime_transaction_gas_map, function_gas_meter, loop_gas_meter) = exec_env.parse_exec_results()
+    
+#     print(json.dumps({ k: v.to_json() for k, v in runtime_transaction_gas_map.items() }))
+    
+#     # print(json.dumps({ k: v.to_json() for k, v in new_transaction_gas_map.items() }))
+    
+#     print(function_gas_meter)
+    
+#     print('Number of loops found: ' + str(len(loop_gas_meter.keys())))
+#     for key in loop_gas_meter.keys():
+#         print(f'LOOP GAS METER FOR {key}')
         
-    def extract_nodes(self, statespace):
-        """
-
-        :param statespace:
-        :param color_map:
-        :return:
-        """
-        nodes = []
-        color_map = {}
-        for node_key in statespace.nodes:
-            node = statespace.nodes[node_key]
-            instructions = [state.get_current_instruction() for state in node.states]
-            code_split = []
-            for instruction in instructions:
-                if instruction["opcode"].startswith("PUSH"):
-                    argument_to_append = ""
-                    if isinstance(instruction["argument"], str):
-                        argument_to_append = instruction["argument"]
-                    else:
-                        argument_to_append = "0x"
-                        for word in instruction["argument"]:
-                            argument_to_append += '{0:0{1}x}'.format(word,2)
-                    code_line = "%d %s %s" % (
-                        instruction["address"],
-                        instruction["opcode"],
-                        argument_to_append,
-                    )
-                elif (
-                    instruction["opcode"].startswith("JUMPDEST")
-                    and NodeFlags.FUNC_ENTRY in node.flags
-                    and instruction["address"] == node.start_addr
-                ):
-                    code_line = node.function_name
-                else:
-                    code_line = "%d %s" % (instruction["address"], instruction["opcode"])
-
-                code_line = re.sub(
-                    "([0-9a-f]{8})[0-9a-f]+", lambda m: m.group(1) + "(...)", code_line
-                )
-                code_split.append(code_line)
-
-            truncated_code = (
-                "\n".join(code_split)
-                if (len(code_split) < 7)
-                else "\n".join(code_split[:6]) + "\n(click to expand +)"
-            )
-
-            if node.get_cfg_dict()["contract_name"] not in color_map.keys():
-                color = default_colors[len(color_map) % len(default_colors)]
-                color_map[node.get_cfg_dict()["contract_name"]] = color
-
-            nodes.append(
-                {
-                    "id": str(node_key),
-                    "color": color_map.get(
-                        node.get_cfg_dict()["contract_name"], default_colors[0]
-                    ),
-                    "size": 150,
-                    "fullLabel": "\n".join(code_split),
-                    "label": truncated_code,
-                    "truncLabel": truncated_code,
-                    "isExpanded": False,
-                }
-            )
-        return nodes
-
-
-    def extract_edges(self, statespace):
-        """
-
-        :param statespace:
-        :return:
-        """
-        edges = []
-        for edge in statespace.edges:
-            if edge.condition is None:
-                label = ""
-            else:
-                try:
-                    label = str(simplify(edge.condition)).replace("\n", "")
-                except Z3Exception:
-                    label = str(edge.condition).replace("\n", "")
-
-            label = re.sub(
-                r"([^_])([\d]{2}\d+)", lambda m: m.group(1) + hex(int(m.group(2))), label
-            )
-
-            edges.append(
-                {
-                    "from": str(edge.as_dict["from"]),
-                    "to": str(edge.as_dict["to"]),
-                    "arrows": "to",
-                    "label": label,
-                    "smooth": {"type": "cubicBezier"},
-                }
-            )
-        return edges
-
-
-if __name__ == "__main__":
-    bytecode = "ffffffff16146107f0576040517f08c379a00000000000000000000000000000000000000000000000000000000081526004016107e790610f4a565b60405180910390fd5b600160008273ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff16815260200190815260200160002060010160009054906101000a900460ff1615610880576040517f08c379a000000000000000000000000000000000000000000000000000000000815260040161087790610fb6565b60405180910390fd5b6000600160008373ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff16815260200190815260200160002060000154146108cf57600080fd5b60018060008373ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff1681526020019081526020016000206000018190555050565b60016020528060005260406000206000915090508060000154908060010160009054906101000a900460ff16908060010160019054906101000a900473ffffffffffffffffffffffffffffffffffffffff16908060020154905084565b600060026109826106da565b8154811061099357610992610c97565b5b906000526020600020906002020160000154905090565b600080fd5b6000819050919050565b6109c2816109af565b81146109cd57600080fd5b50565b6000813590506109df816109b9565b92915050565b6000602082840312156109fb576109fa6109aa565b5b6000610a09848285016109d0565b91505092915050565b6000819050919050565b610a2581610a12565b82525050565b610a34816109af565b82525050565b6000604082019050610a4f6000830185610a1c565b610a5c6020830184610a2b565b9392505050565b600073ffffffffffffffffffffffffffffffffffffffff82169050919050565b6000610a8e82610a63565b9050919050565b610a9e81610a83565b82525050565b6000602082019050610ab96000830184610a95565b92915050565b610ac881610a83565b8114610ad357600080fd5b50565b600081359050610ae581610abf565b92915050565b600060208284031215610b0157610b006109aa565b5b6000610b0f84828501610ad6565b91505092915050565b6000602082019050610b2d6000830184610a2b565b92915050565b60008115159050919050565b610b4881610b33565b82525050565b6000608082019050610b636000830187610a2b565b610b706020830186610b3f565b610b7d6040830185610a95565b610b8a6060830184610a2b565b95945050505050565b6000602082019050610ba86000830184610a1c565b92915050565b600082825260208201905092915050565b7f486173206e6f20726967687420746f20766f7465000000000000000000000000600082015250565b6000610bf5601483610bae565b9150610c0082610bbf565b602082019050919050565b60006020820190508181036000830152610c2481610be8565b9050919050565b7f416c726561647920766f7465642e000000000000000000000000000000000000600082015250565b6000610c61600e83610bae565b9150610c6c82610c2b565b602082019050919050565b60006020820190508181036000830152610c9081610c54565b9050919050565b7f4e487b7100000000000000000000000000000000000000000000000000000000600052603260045260246000fd5b7f4e487b7100000000000000000000000000000000000000000000000000000000600052601160045260246000fd5b6000610d00826109af565b9150610d0b836109af565b9250827fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff03821115610d4057610d3f610cc6565b5b828201905092915050565b7f596f7520616c726561647920766f7465642e0000000000000000000000000000600082015250565b6000610d81601283610bae565b9150610d8c82610d4b565b602082019050919050565b60006020820190508181036000830152610db081610d74565b9050919050565b7f53656c662d64656c65676174696f6e20697320646973616c6c6f7765642e0000600082015250565b6000610ded601e83610bae565b9150610df882610db7565b602082019050919050565b60006020820190508181036000830152610e1c81610de0565b9050919050565b7f466f756e64206c6f6f7020696e2064656c65676174696f6e2e00000000000000600082015250565b6000610e59601983610bae565b9150610e6482610e23565b602082019050919050565b60006020820190508181036000830152610e8881610e4c565b9050919050565b6000610e9a826109af565b91507fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff821415610ecd57610ecc610cc6565b5b600182019050919050565b7f4f6e6c79206368616972706572736f6e2063616e20676976652072696768742060008201527f746f20766f74652e000000000000000000000000000000000000000000000000602082015250565b6000610f34602883610bae565b9150610f3f82610ed8565b604082019050919050565b60006020820190508181036000830152610f6381610f27565b9050919050565b7f54686520766f74657220616c726561647920766f7465642e0000000000000000600082015250565b6000610fa0601883610bae565b9150610fab82610f6a565b602082019050919050565b60006020820190508181036000830152610fcf81610f93565b905091905056fea26469706673582212209f6645214cc4dd0468f8baaa83397392bcb903ad226dff635184c53192e6543064736f6c637829302e382e31312d646576656c6f702e323032312e31322e31382b636f6d6d69742e3130323839666263005a"
-    f = open('test.json')
-    data = json.load(f)
-    
-    sol_file = open('test.sol', "r")
-    sol_contents = sol_file.read()
-    
-    # exec_env = SymExec(solidity_files=["output.sol"], json=[data], solidity_file_contents=[sol_contents], transaction_count=3, execution_timeout=60, solver_timeout=20000, loop_bound=10)
-    # exec_env = SymExec(solidity_files=["test.sol"])
-    exec_env = SymExec(onchain_address="0x2C4e8f2D746113d0696cE89B35F0d8bF88E0AEcA", 
-                       transaction_count=3, 
-                       execution_timeout=60, 
-                       solver_timeout=20000, 
-                       loop_bound=10,
-                       no_onchain_data=False,
-                       query_signature=True)
-    exec_env.execute_command()
-    
-    (creation_transaction_gas_map, runtime_transaction_gas_map, function_gas_meter, loop_gas_meter) = exec_env.parse_exec_results()
-    
-    print(json.dumps({ k: v.to_json() for k, v in runtime_transaction_gas_map.items() }))
-    
-    # print(json.dumps({ k: v.to_json() for k, v in new_transaction_gas_map.items() }))
-    
-    print(function_gas_meter)
-    
-    print('Number of loops found: ' + str(len(loop_gas_meter.keys())))
-    for key in loop_gas_meter.keys():
-        print(f'LOOP GAS METER FOR {key}')
+#         key_gas_items = loop_gas_meter[key]
         
-        key_gas_items = loop_gas_meter[key]
-        
-        for pc in key_gas_items.keys():
-            loop_gas_item = key_gas_items[pc]
-            if len(loop_gas_item.iteration_gas_cost) > 0:
-                print(f'\tPC {pc}')
-                print(f'\t\tis_hidden: {"Yes" if loop_gas_item.is_hidden else "No"}')
-                print(f'\t\tAverage iteration cost: {sum(loop_gas_item.iteration_gas_cost) / len(loop_gas_item.iteration_gas_cost)}')
-                print(f'\t\tNum iterations seen: {len(loop_gas_item.iteration_gas_cost)}')
+#         for pc in key_gas_items.keys():
+#             loop_gas_item = key_gas_items[pc]
+#             if len(loop_gas_item.iteration_gas_cost) > 0:
+#                 print(f'\tPC {pc}')
+#                 print(f'\t\tis_hidden: {"Yes" if loop_gas_item.is_hidden else "No"}')
+#                 print(f'\t\tAverage iteration cost: {sum(loop_gas_item.iteration_gas_cost) / len(loop_gas_item.iteration_gas_cost)}')
+#                 print(f'\t\tNum iterations seen: {len(loop_gas_item.iteration_gas_cost)}')
             

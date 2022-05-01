@@ -24,7 +24,7 @@ services:
     build: .
     ports:
       - "5000:5000"
-    command: ["gunicorn", "--bind", "[::]:5000", "--workers", "8", "solbolt.wsgi:application"]
+    command: ["gunicorn", "--bind", "[::]:5000", "--workers", "8", "wsgi:app"]
     # command: ["python3.9", "--version"]
     restart: always
     volumes:
@@ -37,12 +37,12 @@ services:
       - backend.env
   celery-worker:
     build: .
-    command: ["celery", "-A", "solbolt", "worker", "-l", "info", "--concurrency=2"]
+    command: ["celery", "-A", "solbolt.tasks", "worker", "-l", "info", "--concurrency=2"]
     # command: ["python3", "manage.py", "runserver", "[::]:5000"]
     restart: always
     user: appuser
     volumes:
-      - ./tkets/:/solbolt/tkets/
+      - ./solbolt/:/app/solbolt/
       # - static_volume:/solbolt/tkets/staticfiles
       # - media_volume:/solbolt/tkets/mediafiles
     depends_on:

@@ -10,10 +10,12 @@ except ImportError:
     from flask_restplus import Api, Resource
 from solbolt.apis import api
 from flask_cors import CORS
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 def create_app(test_config=None):
     # create and configure the app
     app = Flask(__name__, instance_relative_config=True)
+    app.wsgi_app = ProxyFix(app.wsgi_app)
     app.config.from_mapping(
         SECRET_KEY='dev',
         DATABASE=os.path.join(app.instance_path, 'flaskr.sqlite'),

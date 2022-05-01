@@ -23,7 +23,7 @@ RUN set -ex \
 #    && rm -rf /root/.cache
 
 ADD . /app
-WORKDIR /app/solbolt
+WORKDIR /app
 
 # RUN useradd -rm -d /home/ubuntu -s /bin/bash -g nogroup -G sudo -u 1001 nouser
 

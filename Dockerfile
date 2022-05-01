@@ -9,7 +9,7 @@ RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
 RUN set -ex \
     && apt-get update \
-    && apt-get install -y libpq-dev gcc build-essential python3.9-dev python3.9 python3.9-venv \
+    && apt-get install -y libpq-dev gcc git build-essential python3.9-dev python3.9 python3.9-venv \
     && python3.9 -m venv /env \
     && /env/bin/pip install --upgrade pip \
     && /env/bin/pip install --no-cache-dir -r /app/requirements.txt

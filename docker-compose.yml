@@ -9,8 +9,8 @@ services:
     command: "/bin/sh -c 'while :; do sleep 6h & wait $${!}; nginx -s reload; done & nginx -g \"daemon off;\"'"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf
-      - static_volume:/app/tkets/staticfiles
-      - media_volume:/app/tkets/mediafiles
+      # - static_volume:/app/tkets/staticfiles
+      # - media_volume:/app/tkets/mediafiles
       - ./data/certbot/conf:/etc/letsencrypt
       - ./data/certbot/www:/var/www/certbot
       - ./log/nginx:/var/log/nginx
@@ -43,8 +43,8 @@ services:
     user: appuser
     volumes:
       - ./tkets/:/solbolt/tkets/
-      - static_volume:/solbolt/tkets/staticfiles
-      - media_volume:/solbolt/tkets/mediafiles
+      # - static_volume:/solbolt/tkets/staticfiles
+      # - media_volume:/solbolt/tkets/mediafiles
     depends_on:
       - redis
     env_file:
@@ -62,6 +62,6 @@ services:
     volumes:
       - ./data/certbot/conf:/etc/letsencrypt
       - ./data/certbot/www:/var/www/certbot
-volumes:
-  static_volume:
-  media_volume:
+# volumes:
+  # static_volume:
+  # media_volume:

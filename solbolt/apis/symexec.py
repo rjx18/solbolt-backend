@@ -107,8 +107,10 @@ default_opts = {
 
 log = logging.getLogger(__name__)
 
-EXECUTION_TIMEOUT = int(os.environ.get("SOLBOLT_SYMEXEC_TIMEOUT", "120"))
-
+# EXECUTION_TIMEOUT = int(os.environ.get("SOLBOLT_SYMEXEC_TIMEOUT", "300"))
+EXECUTION_TIMEOUT = 300
+# CREATION_TIMEOUT = int(os.environ.get("SOLBOLT_CREATION_TIMEOUT", "60"))
+CREATION_TIMEOUT = 60
 
 def merge_gas_items(global_gas_item, add_gas_item):
     global_gas_item.min_opcode_gas_used += add_gas_item.min_opcode_gas_used
@@ -135,7 +137,7 @@ class SymExec:
                 transaction_count=2,
                 execution_timeout=EXECUTION_TIMEOUT,
                 solver_timeout=10000,
-                create_timeout=10,
+                create_timeout=CREATION_TIMEOUT,
                 unconstrained_storage=False,
                 bin_runtime=True,
                 no_onchain_data=True,

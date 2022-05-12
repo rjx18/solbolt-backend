@@ -266,7 +266,6 @@ def symbolic_exec(solidity_files, contract, compiled_json, settings):
     }
     
   except KeyError as e:
-    # print(traceback.format_exc())
     return {
         "success": False,
         "result": "Internal server error, could not symbolic execute"

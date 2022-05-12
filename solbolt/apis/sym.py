@@ -18,6 +18,8 @@ sym_settings = api.model('Symbolic execution Settings',
                     'enable_onchain': fields.Boolean(default=False,
                             description="Enables on chain concrete execution"),
                     'onchain_address': fields.String(description="Address used for on chain concrete execution"),
+                    'ignore_constraints': fields.Boolean(default=True,
+                            description="Enables or disables the Z3 satisfiability checker. Enabling this will check if each path is satisfiable, but may not reach all states."),
                 })
 
 sym_file = api.model('Symbolic execution file',

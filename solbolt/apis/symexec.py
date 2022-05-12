@@ -141,7 +141,8 @@ class SymExec:
                 unconstrained_storage=False,
                 bin_runtime=True,
                 no_onchain_data=True,
-                query_signature=None
+                query_signature=None,
+                ignore_constraints=True
                 ) -> None:
         self.command = command
         self.solidity_files = solidity_files
@@ -159,6 +160,7 @@ class SymExec:
         self.create_timeout = create_timeout
         self.unconstrained_storage = unconstrained_storage
         self.bin_runtime = bin_runtime
+        self.ignore_constraints = ignore_constraints
         
         self.infura_id = os.environ.get('SOLBOLT_INFURA_ID', '')
         self.no_onchain_data = no_onchain_data
@@ -275,6 +277,7 @@ class SymExec:
             call_depth_limit=self.call_depth_limit,
             # sparse_pruning=self.sparse_pruning,
             unconstrained_storage=self.unconstrained_storage,
+            ignore_constraints=self.ignore_constraints
             # solver_log=self.solver_log,
         )
 

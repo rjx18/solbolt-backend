@@ -226,7 +226,8 @@ def symbolic_exec(solidity_files, contract, compiled_json, settings):
                 strategy=settings['strategy'],
                 loop_bound=settings['loop_bound'],
                 transaction_count=settings['transaction_count'],
-                no_onchain_data=no_onchain_data
+                no_onchain_data=no_onchain_data,
+                ignore_constraints=settings['ignore_constraints']
             )
             
     exec_env.execute_command()
@@ -278,5 +279,5 @@ def symbolic_exec(solidity_files, contract, compiled_json, settings):
   except Exception as e:
     return {
         "success": False,
-        "result": traceback.format_exc()
+        "result": traceback.format_exc() # TODO: Change this to just show the Error source, and not the entire trace
       }

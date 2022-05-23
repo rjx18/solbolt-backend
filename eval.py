@@ -1,3 +1,5 @@
+from distutils.log import error
+from matplotlib.pyplot import xlabel
 import requests
 import os
 import json
@@ -6,8 +8,25 @@ from statistics import median, mean
 
 from os.path import exists
 import ast
+from packaging import version
 
 import traceback
+
+import argparse
+
+import sys
+
+import pandas as pd
+import plotly.graph_objects as go
+import plotly.io as pio
+from plotly.colors import n_colors
+import plotly.express as px
+
+from enum import Enum
+import time
+from pathlib import Path
+
+############ EVAL #############
 
 CONTRACT_INDEX_URL = "https://raw.githubusercontent.com/tintinweb/smart-contract-sanctuary-ethereum/71f4a95fb5394c810238952dace1b2c3103e7617/contracts/mainnet/contracts.json"
 ETHERSCAN_API_ENDPOINT = 'https://api.etherscan.io/api'
@@ -50,6 +69,22 @@ MAX_PAGES = 10
 
 GAS_CLASSES = [2500, 5000, 10000, 20000, 50000, 100000, 500000, 1000000]
 
+COV_CLASSES = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
+
+def get_gas_class_name(gas_class):
+  if gas_class == 0:
+    return f'0 - {GAS_CLASSES[gas_class]} GAS'
+  if gas_class < len(GAS_CLASSES):
+    return f'{GAS_CLASSES[gas_class - 1]} - {GAS_CLASSES[gas_class]} GAS'
+  return f'>{GAS_CLASSES[gas_class - 1]} GAS'
+
+def get_cov_class_name(cov_class):
+  if cov_class == 0:
+    return f'0% - {COV_CLASSES[cov_class]}%'
+  if cov_class < len(COV_CLASSES):
+    return f'{COV_CLASSES[cov_class - 1]}% - {COV_CLASSES[cov_class]}%'
+  return f'>{COV_CLASSES[cov_class - 1]}%'
+
 class bcolors:
     HEADER = '\033[95m'
     OKBLUE = '\033[94m'
@@ -62,11 +97,12 @@ class bcolors:
     UNDERLINE = '\033[4m'
 
 DEFAULT_SYMEXEC_SETTINGS = {
-    'max_depth': 256,
-    'call_depth_limit': 32,
+    'max_depth': 64,
+    'call_depth_limit': 16,
     'strategy': 'bfs',
     'loop_bound': 10,
-    'transaction_count': 2
+    'transaction_count': 2,
+    'ignore_constraints': True
     # 'enable_onchain': fields.Boolean(default=False,
     #         description="Enables on chain concrete execution"),
     # 'onchain_address': fields.String(description="Address used for on chain concrete execution"),
@@ -98,30 +134,39 @@ def read_file(filename):
 # Then, evaluates the accuracy of the gas estimation by polling Etherscan
 # Returns the median and average accuracy obtained for each function
 class Evaluator:
-  def __init__(self, address: str, contract_name: str) -> None:
+  def __init__(self, address: str, contract_name: str = "contract", symexec_dict=None, prefix=None) -> None:
       print(f"{bcolors.OKBLUE}[EVAL]: Starting evaluation for {contract_name} at {address}...{bcolors.ENDC}")
+      if (symexec_dict != None):
+        print(f"{bcolors.OKBLUE}[EVAL]: Using loaded symexec results...{bcolors.ENDC}")
     
       self.address = address
       self.contract_name = contract_name
       
+      self.symexec_dict = symexec_dict
+      
       self.compiler_settings = None
+      self.prefix = prefix
       self.source_contents = list()
       
   # runs the all the evaluation steps
   def run_all(self) -> None:
     try:
-      self.get_etherscan_code()
-      compilation_result = self.compile()
-      print(f"{bcolors.OKBLUE}[EVAL]: Compilation completed! Starting symbolic execution...{bcolors.ENDC}")
-      symexec_result = self.symexec(compilation_result)
-      print(f"{bcolors.OKBLUE}[EVAL]: Symexec completed! Evaluating with concrete transactions...{bcolors.ENDC}")
+      if (self.symexec_dict == None):
+        self.get_etherscan_code()
+        compilation_result = self.compile()
+        print(f"{bcolors.OKBLUE}[EVAL]: Compilation completed! Starting symbolic execution...{bcolors.ENDC}")
+        symexec_result = self.symexec(compilation_result)
+        print(f"{bcolors.OKBLUE}[EVAL]: Symexec completed! Evaluating with concrete transactions...{bcolors.ENDC}")
+      else:
+        symexec_result = self.symexec_dict
+        print(f"{bcolors.OKBLUE}[EVAL]: Symexec loaded from file! Evaluating with concrete transactions...{bcolors.ENDC}")
       eval_result = self.eval(symexec_result)
       print(f"{bcolors.OKBLUE}[EVAL]: Evaluation completed! Saving...{bcolors.ENDC}")
       output_dict = {
         "status": 1,
         "result": eval_result
       }
-      self.save_to_file(str(output_dict))
+      self.save_to_file(str(output_dict), prefix=self.prefix)
     except Exception as e:
       print(f"{bcolors.FAIL}[EVAL]: {e.__class__.__name__} caught! Skipping...{bcolors.ENDC}")
       output_dict = {
@@ -129,7 +174,7 @@ class Evaluator:
         "result": f"{e.__class__.__name__} caught",
         "traceback": traceback.format_exc()
       }
-      self.save_to_file(str(output_dict))
+      self.save_to_file(str(output_dict), prefix=self.prefix)
       
 
   # gets Etherscan code
@@ -184,6 +229,9 @@ class Evaluator:
           }
         
         self.source_contents.append(new_source)
+      
+      if version.parse(result[ETHERSCAN_COMPILER_VERSION]) < version.parse("0.4.18"):
+        raise EtherscanException
       
       self.compiler_settings = {
         COMPILER_VERSION: result[ETHERSCAN_COMPILER_VERSION],
@@ -285,7 +333,7 @@ class Evaluator:
             per_function_stats[fn_hash].append(accuracy)
             
             try: 
-              gas_class = next(index for index, value in enumerate(GAS_CLASSES) if value > symexec_gas_estimate)
+              gas_class = next(index for index, value in enumerate(GAS_CLASSES) if value > concrete_gas_used)
             except StopIteration:
               gas_class = -1
               
@@ -316,11 +364,18 @@ class Evaluator:
     return {
       "summary": overall_summary,
       "functions": per_function_summary,
-      "gas_class": per_gas_class_summary
+      "gas_class": per_gas_class_summary,
+      "symexec_result": symexec_result
     }
   
-  def save_to_file(self, result):
-    with open(f"eval/contracts/{self.address}.txt", "w") as result_file:
+  def save_to_file(self, result, prefix=None):
+    prefix_text = "" if prefix == None else f'{prefix}/'
+    
+    path = f"eval/contracts/{prefix_text}"
+    
+    Path(path).mkdir(parents=True, exist_ok=True)
+    
+    with open(f"{path}{self.address}.txt", "w") as result_file:
           result_file.write(result)
   
   def get_accuracy_summary(self, txn_list):
@@ -396,15 +451,43 @@ class EvalWrapper:
     
     print("Evaluation complete!")
     
-class ResultParser:
-  def __init__(self) -> None:
-      pass
+  def exec_eval_symloaded(self):
+    contract_directory = 'eval/contracts/v2'
+    contract_directory_v1 = 'eval/contracts'
+    for filename in os.listdir(contract_directory):
+      full_filename = os.path.join(contract_directory, filename)
+      full_filename_v1 = os.path.join(contract_directory_v1, filename)
+      # checking if it is a file
+      if os.path.isfile(full_filename):
+        with open(full_filename) as f:
+          json_content = ast.literal_eval(f.read())
+          if (json_content["status"] == 0):
+            with open(full_filename_v1) as f1:
+              json_content_v1 = ast.literal_eval(f1.read())
+              if (json_content_v1["status"] == 1):
+                evaluator = Evaluator(filename[:-4], symexec_dict=json_content_v1["result"]["symexec_result"], prefix="v2")
+                evaluator.run_all()
     
-  def exec_parse(self):
+class ResultMode(Enum):
+    default = 'default'
+    gas = 'gas'
+    version = 'version'
+    coverage = 'coverage'
+    errors = 'errors'
+
+    def __str__(self):
+        return self.value
+    
+class ResultParser:
+  
+  def __init__(self, mode) -> None:
+      self.mode = mode
+        
+  def default_parse(self):
     contract_directory = 'eval/contracts'
     success_count = 0
-    total_accuracy = 0
-    count_accuracy = 0
+    accuracy_list = []
+    coverage_list = []
     for filename in os.listdir(contract_directory):
       full_filename = os.path.join(contract_directory, filename)
       # checking if it is a file
@@ -413,17 +496,245 @@ class ResultParser:
           json_content = ast.literal_eval(f.read())
           if (json_content["status"] == 1):
             success_count += 1
-            total_accuracy += json_content["result"]["summary"]["sum"]
-            count_accuracy += json_content["result"]["summary"]["count"]
-    print(success_count)
-    print(total_accuracy / count_accuracy)
-        
+            accuracy_for_contact = json_content["result"]["summary"]["sum"] / json_content["result"]["summary"]["count"]
+            accuracy_list.append(accuracy_for_contact * 100.0)
+            coverage_list.append(json_content["result"]["symexec_result"]["cov_percentage"])
+    print(f'Total contracts successfully evaluated: {success_count}')
+    print(f'Mean accuracy (estimated gas over exact): {mean(accuracy_list)}')
+    print(f'Median accuracy (estimated gas over exact): {median(accuracy_list)}')
+    print(f'Mean coverage: {mean(coverage_list)}%')
+    print(f'Median coverage: {median(coverage_list)}%')
+    accuracy_df = pd.Series(accuracy_list, copy=False)
+    coverage_df = pd.Series(coverage_list, copy=False)
     
-if __name__ == "__main__":
-  # test_wrapper = EvalWrapper()
-  # test_wrapper.exec_eval()
-  
-  result_parser = ResultParser()
+    layout = go.Layout(
+        autosize=False,
+        width=400,
+        height=500,
+    )
+    
+    fig_acc = go.Figure(data=go.Violin(y=accuracy_df, box_visible=True, line_color='black',
+                               meanline_visible=True, fillcolor='lightseagreen', opacity=0.6,
+                               x0='Average accuracy per contract', points="all", spanmode="hard"), layout=layout)
+    fig_acc.update_layout(
+        margin=dict(l=0, r=0, t=0, b=0),
+    )
+    
+    fig_acc.write_html(f"eval/plots/overall_accuracy_plot.html")
+    
+    
+    fig_cov = go.Figure(data=go.Violin(y=coverage_df, box_visible=True, line_color='black',
+                               meanline_visible=True, fillcolor='salmon', opacity=0.6,
+                               x0='Average coverage per contract', points="all", spanmode="hard"), layout=layout)
+    fig_cov.update_layout(
+        margin=dict(l=0, r=0, t=0, b=0),
+    )
+    fig_cov.write_html(f"eval/plots/overall_cov_plot.html")
+
+  def coverage_parse(self):
+    contract_directory = 'eval/contracts'
+    cov_dict = {c: [] for c in range(len(COV_CLASSES))}
+    for filename in os.listdir(contract_directory):
+      full_filename = os.path.join(contract_directory, filename)
+      # checking if it is a file
+      if os.path.isfile(full_filename):
+        with open(full_filename) as f:
+          json_content = ast.literal_eval(f.read())
+          if (json_content["status"] == 1):
+            cov_percentage = json_content["result"]["symexec_result"]["cov_percentage"]
+            cov_class = next(index for index, value in enumerate(COV_CLASSES) if value > cov_percentage)
+            cov_dict[cov_class].append(json_content["result"]["summary"]["mean"] * 100.0)
+            
+    colors = n_colors('rgb(5, 200, 200)', 'rgb(200, 10, 10)', len(cov_dict), colortype='rgb')
+
+    layout = go.Layout(
+        autosize=False,
+        width=800,
+        height=400,
+    )
+
+    fig = go.Figure(layout=layout)
+    for index, cov_class in enumerate(sorted(cov_dict)):
+        print(f'Cov class {cov_class}: {len(cov_dict[cov_class])}')
+        cov_df = pd.Series(cov_dict[cov_class], copy=False)
+        fig.add_trace(go.Violin(x=cov_df, name=get_cov_class_name(cov_class), line_color=colors[index], spanmode="hard", box_visible=True, meanline_visible=True))
+
+    fig.update_traces(orientation='h', side='positive', width=3, points=False)
+    fig.update_layout(xaxis_showgrid=False, xaxis_zeroline=False, margin=dict(l=0, r=0, t=0, b=0))
+    fig.write_html(f"eval/plots/coverage_against_accuracy_plot.html")
+    
+  def error_parse(self):
+    contract_directory = 'eval/contracts'
+    error_dict = {
+      "Success": 0,
+      "Solidity version too low or Etherscan API error": 0,
+      "Not enough concrete transactions": 0,
+      "Unsupported language": 0,
+      "Compilation failed": 0,
+      "Symbolic execution failed": 0,
+      "Other errors": 0
+    }
+    for filename in os.listdir(contract_directory):
+      full_filename = os.path.join(contract_directory, filename)
+      # checking if it is a file
+      if os.path.isfile(full_filename):
+        with open(full_filename) as f:
+          json_content = ast.literal_eval(f.read())
+          error_class = "Success"
+          
+          if (json_content["status"] != 1):
+            error_logged = json_content["result"][:-7]
+            
+            if error_logged.startswith("Etherscan"):
+              error_class = "Solidity version too low or Etherscan API error"
+            elif error_logged.startswith("NoMatching"):
+              error_class = "Not enough concrete transactions"
+            elif error_logged.startswith("Unsupported"):
+              error_class = "Unsupported language"
+            elif error_logged.startswith("Compilation"):
+              error_class = "Compilation failed"
+            elif error_logged.startswith("SymExec"):
+              error_class = "Symbolic execution failed"
+            else:
+              error_class = "Other errors"
+          
+          error_dict[error_class] += 1
+    
+    error_dict_parsed = [{'Evaluation status': k, 'Count': v} for (k, v) in error_dict.items()]
+    
+    error_df = pd.DataFrame.from_records(error_dict_parsed)
+
+    fig = px.bar(error_df, x='Evaluation status', y='Count')
+    fig.update_layout(
+        autosize=False,
+        width=600,
+        height=400,
+        margin=dict(l=0, r=0, t=0, b=0)
+      )
+    fig.write_html(f"eval/plots/eval_errors.html")
+    
+  def version_parse(self):
+    contract_directory = 'eval/contracts'
+    version_dict = dict()
+    
+    (contracts_list, _) = read_file("contracts.json")
+    
+    contract_to_version_map = {current_contract_json['address']: current_contract_json['compiler'] for current_contract_json in contracts_list}
+    
+    for filename in os.listdir(contract_directory):
+      full_filename = os.path.join(contract_directory, filename)
+      # checking if it is a file
+      if os.path.isfile(full_filename):
+        with open(full_filename) as f:
+          json_content = ast.literal_eval(f.read())
+          
+          if (json_content["status"] == 1):
+            contract_address = filename[:-4]
+            
+            compiler_version_str = contract_to_version_map[contract_address]
+            if compiler_version_str.startswith('v'):
+              compiler_version_str = compiler_version_str[1:]
+              
+            compiler_version = version.parse(compiler_version_str)
+            
+            solidity_version_key = f'0.{compiler_version.minor}.x'
+            
+            if solidity_version_key not in version_dict:
+              version_dict[solidity_version_key] = 0
+          
+            version_dict[solidity_version_key] += 1
+    
+    version_dict_parsed = [{'Solidity version': k, 'Count': v} for (k, v) in version_dict.items()]
+    
+    version_df = pd.DataFrame.from_records(version_dict_parsed)
+
+    fig = px.bar(version_df, x='Solidity version', y='Count')
+    fig.update_layout(
+        autosize=False,
+        width=600,
+        height=400,
+        margin=dict(l=0, r=0, t=0, b=0)
+      )
+    fig.write_html(f"eval/plots/eval_versions.html")
+    
+  def gas_parse(self):
+    contract_directory = 'eval/contracts/v2'
+    gas_dict = dict()
+    for filename in os.listdir(contract_directory):
+      full_filename = os.path.join(contract_directory, filename)
+      # checking if it is a file
+      if os.path.isfile(full_filename):
+        with open(full_filename) as f:
+          json_content = ast.literal_eval(f.read())
+          if (json_content["status"] == 1):
+            gas_classes = json_content["result"]["gas_class"]
+            for gas_class, summary in gas_classes.items():
+              if gas_class not in gas_dict:
+                gas_dict[gas_class] = []
+              gas_dict[gas_class].append(summary["sum"] / summary["count"])
+            
+    colors = n_colors('rgb(5, 200, 200)', 'rgb(200, 10, 10)', len(gas_dict), colortype='rgb')
+
+    layout = go.Layout(
+        autosize=False,
+        width=800,
+        height=400,
+    )
+
+    fig = go.Figure(layout = layout)
+    for index, gas_class in enumerate(sorted(gas_dict)):
+        print(f'Gas class {gas_class}: {len(gas_dict[gas_class])}')
+        gas_df = pd.Series(gas_dict[gas_class], copy=False)
+        fig.add_trace(go.Violin(x=gas_df, name=get_gas_class_name(gas_class), line_color=colors[index], spanmode="hard", box_visible=True, meanline_visible=True))
+
+    fig.update_traces(orientation='h', side='positive', width=3, points=False)
+    fig.update_layout(xaxis_showgrid=False, xaxis_zeroline=False, margin=dict(l=0, r=0, t=0, b=0))
+    fig.write_html(f"eval/plots/gas_against_accuracy_plot.html")
+    
+  def exec_parse(self):
+    mode_table = {
+      ResultMode.default: self.default_parse,
+      ResultMode.gas: self.gas_parse,
+      ResultMode.coverage: self.coverage_parse,
+      ResultMode.errors: self.error_parse,
+      ResultMode.version: self.version_parse
+    }
+    mode_table[self.mode]()
+    
+def run_main(args):
+  test_wrapper = EvalWrapper()
+  test_wrapper.exec_eval_symloaded()
+
+def eval_main(args):
+  result_parser = ResultParser(args.mode)
   result_parser.exec_parse()
-  # test_eval = Evaluator("0x2c4e8f2d746113d0696ce89b35f0d8bf88e0aeca", "SimpleToken")
-  # test_eval.run_all()
+
+# if __name__ == "__main__":
+#   # test_wrapper = EvalWrapper()
+#   # test_wrapper.exec_eval()
+  
+#   result_parser = ResultParser()
+#   result_parser.exec_parse()
+
+
+############ PARSER #############
+
+parser = argparse.ArgumentParser(description='Evaluate the symbolic execution engine using concrete transactions')
+subparsers = parser.add_subparsers()
+
+# Create a run subcommand    
+parser_run = subparsers.add_parser('run', help='Run symbolic execution on verified contracts')
+parser_run.set_defaults(func=run_main)
+
+# Create a eval subcommand       
+parser_eval = subparsers.add_parser('eval', help='Evaluate the completed symbolic execution results')
+parser_eval.add_argument('mode', type=ResultMode, choices=list(ResultMode))
+parser_eval.set_defaults(func=eval_main)
+
+if len(sys.argv) <= 1:
+    sys.argv.append('--help')
+
+args = parser.parse_args()
+
+# Run the appropriate function
+args.func(args)

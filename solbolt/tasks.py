@@ -232,7 +232,7 @@ def symbolic_exec(solidity_files, contract, compiled_json, settings):
             
     exec_env.execute_command()
     
-    (creation_transaction_gas_map, runtime_transaction_gas_map, function_gas_map, loop_gas_meter) = exec_env.parse_exec_results()
+    (creation_transaction_gas_map, runtime_transaction_gas_map, function_gas_map, loop_gas_meter, cov_percentage, detected_issues) = exec_env.parse_exec_results()
     
     creation_result = { k: v.__dict__() for k, v in creation_transaction_gas_map.items() }
     
@@ -254,7 +254,10 @@ def symbolic_exec(solidity_files, contract, compiled_json, settings):
             else:
                 average_iteration_cost = 0
             
-            loop_gas_result[key][pc] = average_iteration_cost
+            loop_gas_result[key][pc] = {
+                "gas": average_iteration_cost,
+                "isHidden": loop_gas_item.is_hidden
+            }
     
     return {
       "success": True,
@@ -262,7 +265,9 @@ def symbolic_exec(solidity_files, contract, compiled_json, settings):
         "creation": creation_result,
         "runtime": runtime_result,
         "function_gas": function_gas_map,
-        "loop_gas": loop_gas_result
+        "loop_gas": loop_gas_result,
+        "cov_percentage": cov_percentage,
+        "detected_issues": detected_issues
       }
     }
     

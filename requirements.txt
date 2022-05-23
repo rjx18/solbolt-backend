@@ -57,7 +57,7 @@ MarkupSafe==2.0.1
 matplotlib==3.5.1
 mock==4.0.3
 mypy-extensions==0.4.3
--e git+https://github.com/rjx18/mythril.git@0325dbfd14ab7f442da6162989c3d40fdffea91f#egg=mythril
+-e git+https://github.com/rjx18/mythril.git@d68b1092cb819a5452d86f80f20164072c8d9c14#egg=mythril
 nodeenv==1.6.0
 numpy==1.22.2
 packaging==21.3

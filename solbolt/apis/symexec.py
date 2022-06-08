@@ -247,7 +247,6 @@ class SymExec:
                     "meta": {"logs": [{"level": "error", "hidden": True, "msg": message}]},
                 }
             ]
-            print(json.dumps(result))
         sys.exit()
 
     def execute_command(self):
@@ -281,8 +280,6 @@ class SymExec:
             # solver_log=self.solver_log,
         )
 
-        print(str(self.disassembler.contracts))
-
         if not self.disassembler.contracts:
             self.exit_with_error(
                 "text", "input files do not contain any valid contracts"
@@ -314,8 +311,6 @@ class SymExec:
                 run_analysis_modules=False,
                 # custom_modules_directory=self.custom_modules_directory,
             )
-
-        print("sym.py: Sym exec took : " + str(time.process_time() - start)  + "s")
 
         self.sym = sym
 
@@ -376,44 +371,3 @@ class SymExec:
             merge_gas_items(global_gas_item, gas_meter_item)
 
 
-
-# if __name__ == "__main__":
-#     f = open('test.json')
-#     data = json.load(f)
-    
-#     sol_file = open('test.sol', "r")
-#     sol_contents = sol_file.read()
-    
-#     # exec_env = SymExec(solidity_files=["output.sol"], json=[data], solidity_file_contents=[sol_contents], transaction_count=3, execution_timeout=60, solver_timeout=20000, loop_bound=10)
-#     # exec_env = SymExec(solidity_files=["test.sol"])
-#     # exec_env = SymExec(onchain_address="0x2C4e8f2D746113d0696cE89B35F0d8bF88E0AEcA", 
-#     #                    transaction_count=3, 
-#     #                    execution_timeout=60, 
-#     #                    solver_timeout=20000, 
-#     #                    loop_bound=10,
-#     #                    no_onchain_data=False,
-#     #                    query_signature=True)
-#     exec_env.execute_command()
-    
-#     (creation_transaction_gas_map, runtime_transaction_gas_map, function_gas_meter, loop_gas_meter) = exec_env.parse_exec_results()
-    
-#     print(json.dumps({ k: v.to_json() for k, v in runtime_transaction_gas_map.items() }))
-    
-#     # print(json.dumps({ k: v.to_json() for k, v in new_transaction_gas_map.items() }))
-    
-#     print(function_gas_meter)
-    
-#     print('Number of loops found: ' + str(len(loop_gas_meter.keys())))
-#     for key in loop_gas_meter.keys():
-#         print(f'LOOP GAS METER FOR {key}')
-        
-#         key_gas_items = loop_gas_meter[key]
-        
-#         for pc in key_gas_items.keys():
-#             loop_gas_item = key_gas_items[pc]
-#             if len(loop_gas_item.iteration_gas_cost) > 0:
-#                 print(f'\tPC {pc}')
-#                 print(f'\t\tis_hidden: {"Yes" if loop_gas_item.is_hidden else "No"}')
-#                 print(f'\t\tAverage iteration cost: {sum(loop_gas_item.iteration_gas_cost) / len(loop_gas_item.iteration_gas_cost)}')
-#                 print(f'\t\tNum iterations seen: {len(loop_gas_item.iteration_gas_cost)}')
-            

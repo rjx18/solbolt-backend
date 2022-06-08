@@ -73,10 +73,10 @@ COV_CLASSES = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
 
 def get_gas_class_name(gas_class):
   if gas_class == 0:
-    return f'0 - {GAS_CLASSES[gas_class]} GAS'
+    return f'0 - {GAS_CLASSES[gas_class] // 1000}K GAS'
   if gas_class < len(GAS_CLASSES):
-    return f'{GAS_CLASSES[gas_class - 1]} - {GAS_CLASSES[gas_class]} GAS'
-  return f'>{GAS_CLASSES[gas_class - 1]} GAS'
+    return f'{GAS_CLASSES[gas_class - 1] // 1000}K - {GAS_CLASSES[gas_class] // 1000}K GAS'
+  return f'>{GAS_CLASSES[gas_class - 1] // 1000}K GAS'
 
 def get_cov_class_name(cov_class):
   if cov_class == 0:
@@ -103,9 +103,6 @@ DEFAULT_SYMEXEC_SETTINGS = {
     'loop_bound': 10,
     'transaction_count': 2,
     'ignore_constraints': True
-    # 'enable_onchain': fields.Boolean(default=False,
-    #         description="Enables on chain concrete execution"),
-    # 'onchain_address': fields.String(description="Address used for on chain concrete execution"),
   }
 
 def contract_ether_key(e):
@@ -487,6 +484,13 @@ class ResultParser:
     contract_directory = 'eval/contracts'
     success_count = 0
     accuracy_list = []
+    
+    accuracy_classes = [0.5, 0.8, 0.9, 1.0, 1.1, 1.2, 1.5, 1.75, 3.0, 7.0]
+    accuracy_class_list = [0 for _ in accuracy_classes]
+    accuracy_class_list.append(0)
+    
+    accuracy_labels = ["<50%", "50% - 80%", "80% - 90%", "90% - 100%", "100% - 110%", "110% - 120%", "120% - 150%", "150% - 175%", "175% - 300%", "300% - 700%", ">700%"]
+    
     coverage_list = []
     for filename in os.listdir(contract_directory):
       full_filename = os.path.join(contract_directory, filename)
@@ -499,6 +503,17 @@ class ResultParser:
             accuracy_for_contact = json_content["result"]["summary"]["sum"] / json_content["result"]["summary"]["count"]
             accuracy_list.append(accuracy_for_contact * 100.0)
             coverage_list.append(json_content["result"]["symexec_result"]["cov_percentage"])
+
+            function_gas = json_content["result"]["functions"]
+
+            for function_name, summary in function_gas.items():
+              fn_accuracy = summary["mean"]
+              try: 
+                acc_class = next(index for index, value in enumerate(accuracy_classes) if value > fn_accuracy)
+              except StopIteration:
+                acc_class = -1
+              accuracy_class_list[acc_class] += 1
+    
     print(f'Total contracts successfully evaluated: {success_count}')
     print(f'Mean accuracy (estimated gas over exact): {mean(accuracy_list)}')
     print(f'Median accuracy (estimated gas over exact): {median(accuracy_list)}')
@@ -530,6 +545,77 @@ class ResultParser:
         margin=dict(l=0, r=0, t=0, b=0),
     )
     fig_cov.write_html(f"eval/plots/overall_cov_plot.html")
+    
+    accuracy_map_parsed = [{'Accuracy': accuracy_labels[i], 'Count': v} for (i, v) in enumerate(accuracy_class_list)]
+    
+    acc_map_df = pd.DataFrame.from_records(accuracy_map_parsed)
+
+    fig = px.bar(acc_map_df, x='Accuracy', y='Count')
+    fig.update_layout(
+        autosize=False,
+        width=400,
+        height=400,
+        margin=dict(l=0, r=0, t=0, b=0)
+      )
+    fig.write_html(f"eval/plots/overall_fn_accuracy_plot.html")
+    
+    gastap_map_parsed = [
+      {'Accuracy': "<50%", 'Count': 0, 'Type': 'Constant'},
+      {'Accuracy': "<50%", 'Count': 0, 'Type': 'Constant (improved cost models)'},
+      {'Accuracy': "<50%", 'Count': 0, 'Type': 'Parametric'},
+      {'Accuracy': "<50%", 'Count': 0, 'Type': 'Parametric (improved cost models)'},
+      {'Accuracy': "50% - 80%", 'Count': 0, 'Type': 'Constant'},
+      {'Accuracy': "50% - 80%", 'Count': 0, 'Type': 'Constant (improved cost models)'},
+      {'Accuracy': "50% - 80%", 'Count': 0, 'Type': 'Parametric'},
+      {'Accuracy': "50% - 80%", 'Count': 0, 'Type': 'Parametric (improved cost models)'},
+      {'Accuracy': "80% - 90%", 'Count': 0, 'Type': 'Constant'},
+      {'Accuracy': "80% - 90%", 'Count': 0, 'Type': 'Constant (improved cost models)'},
+      {'Accuracy': "80% - 90%", 'Count': 0, 'Type': 'Parametric'},
+      {'Accuracy': "80% - 90%", 'Count': 0, 'Type': 'Parametric (improved cost models)'},
+      {'Accuracy': "90% - 100%", 'Count': 0, 'Type': 'Constant'},
+      {'Accuracy': "90% - 100%", 'Count': 0, 'Type': 'Constant (improved cost models)'},
+      {'Accuracy': "90% - 100%", 'Count': 0, 'Type': 'Parametric'},
+      {'Accuracy': "90% - 100%", 'Count': 0, 'Type': 'Parametric (improved cost models)'},
+      {'Accuracy': "100% - 110%", 'Count': 17, 'Type': 'Constant'},
+      {'Accuracy': "100% - 110%", 'Count': 19, 'Type': 'Constant (improved cost models)'},
+      {'Accuracy': "100% - 110%", 'Count': 3, 'Type': 'Parametric'},
+      {'Accuracy': "100% - 110%", 'Count': 3, 'Type': 'Parametric (improved cost models)'},
+      {'Accuracy': "110% - 120%", 'Count': 9, 'Type': 'Constant'},
+      {'Accuracy': "110% - 120%", 'Count': 29, 'Type': 'Constant (improved cost models)'},
+      {'Accuracy': "110% - 120%", 'Count': 3, 'Type': 'Parametric'},
+      {'Accuracy': "110% - 120%", 'Count': 8, 'Type': 'Parametric (improved cost models)'},
+      {'Accuracy': "120% - 150%", 'Count': 21, 'Type': 'Constant'},
+      {'Accuracy': "120% - 150%", 'Count': 28, 'Type': 'Constant (improved cost models)'},
+      {'Accuracy': "120% - 150%", 'Count': 5, 'Type': 'Parametric'},
+      {'Accuracy': "120% - 150%", 'Count': 16, 'Type': 'Parametric (improved cost models)'},
+      {'Accuracy': "150% - 175%", 'Count': 16, 'Type': 'Constant'},
+      {'Accuracy': "150% - 175%", 'Count': 0, 'Type': 'Constant (improved cost models)'},
+      {'Accuracy': "150% - 175%", 'Count': 0, 'Type': 'Parametric'},
+      {'Accuracy': "150% - 175%", 'Count': 0, 'Type': 'Parametric (improved cost models)'},
+      {'Accuracy': "175% - 300%", 'Count': 0, 'Type': 'Constant'},
+      {'Accuracy': "175% - 300%", 'Count': 0, 'Type': 'Constant (improved cost models)'},
+      {'Accuracy': "175% - 300%", 'Count': 0, 'Type': 'Parametric'},
+      {'Accuracy': "175% - 300%", 'Count': 0, 'Type': 'Parametric (improved cost models)'},
+      {'Accuracy': "300% - 700%", 'Count': 13, 'Type': 'Constant'},
+      {'Accuracy': "300% - 700%", 'Count': 0, 'Type': 'Constant (improved cost models)'},
+      {'Accuracy': "300% - 700%", 'Count': 16, 'Type': 'Parametric'},
+      {'Accuracy': "300% - 700%", 'Count': 0, 'Type': 'Parametric (improved cost models)'},
+      {'Accuracy': ">700%", 'Count': 0, 'Type': 'Constant'},
+      {'Accuracy': ">700%", 'Count': 0, 'Type': 'Constant (improved cost models)'},
+      {'Accuracy': ">700%", 'Count': 0, 'Type': 'Parametric'},
+      {'Accuracy': ">700%", 'Count': 0, 'Type': 'Parametric (improved cost models)'},
+    ]
+    
+    gastap_df = pd.DataFrame.from_records(gastap_map_parsed)
+
+    fig_gastap = px.bar(gastap_df, x='Accuracy', y='Count', color='Type', barmode='group')
+    fig_gastap.update_layout(
+        autosize=False,
+        width=700,
+        height=400,
+        margin=dict(l=0, r=0, t=0, b=0)
+      )
+    fig_gastap.write_html(f"eval/plots/overall_gastap_fn_accuracy_plot.html")
 
   def coverage_parse(self):
     contract_directory = 'eval/contracts'
@@ -657,6 +743,7 @@ class ResultParser:
       )
     fig.write_html(f"eval/plots/eval_versions.html")
     
+    
   def gas_parse(self):
     contract_directory = 'eval/contracts/v2'
     gas_dict = dict()
@@ -671,7 +758,7 @@ class ResultParser:
             for gas_class, summary in gas_classes.items():
               if gas_class not in gas_dict:
                 gas_dict[gas_class] = []
-              gas_dict[gas_class].append(summary["sum"] / summary["count"])
+              gas_dict[gas_class].append(summary["sum"] / summary["count"] * 100)
             
     colors = n_colors('rgb(5, 200, 200)', 'rgb(200, 10, 10)', len(gas_dict), colortype='rgb')
 

@@ -162,10 +162,9 @@ def compile_solidity(sol_files, settings):
         "result": "Internal server error, could not compile content"
       }
   except Exception as e:
-      print(traceback.format_exc())
       return {
         "success": False,
-        "result": "Request error, could not compile content: " + traceback.format_exc()
+        "result": "Unknown exception occured, please try again soon"
       }
   
 def get_solc_json(sources, json_settings, solc_binary="solc"):
@@ -200,7 +199,6 @@ def get_solc_json(sources, json_settings, solc_binary="solc"):
     try:
         result = json.loads(out)
     except JSONDecodeError as e:
-        # print(f"Encountered a decode error, stdout:{out}, stderr: {stderr}")
         raise e
 
     for error in result.get("errors", []):
@@ -284,5 +282,5 @@ def symbolic_exec(solidity_files, contract, compiled_json, settings):
   except Exception as e:
     return {
         "success": False,
-        "result": traceback.format_exc() # TODO: Change this to just show the Error source, and not the entire trace
+        "result": "Unknown exception occured, please try again soon"
       }
